@@ -65,10 +65,6 @@ function createModel() {
 }
 
 
-const model = tf.sequential();
-model.add(tf.layers.dense({inputShape: [1], units: 1, useBias: true}));
-model.add(tf.layers.dense({units: 1}));
-model.add(tf.layers.dense({units: 50, activation: 'sigmoid'}));
 
 function convertToTensor(data) {
     // Wrapping these calculations in a tidy will dispose any
