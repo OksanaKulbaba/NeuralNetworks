@@ -2,18 +2,18 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>TensorFlow.js Tutorial</title>
-
-    <!-- Import TensorFlow.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
-    <!-- Import tfjs-vis -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.0.2/dist/tfjs-vis.umd.min.js"></script>
-
-    <!-- Import the main script file -->
-    <script src="script.js"></script>
-
+        <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.0.2"></script>
 </head>
-
 <body>
+<h1>Классификатор рукописных цифр!</h1>
+<canvas id="canvas" width="280" height="280" style="position:absolute;top:100px;left:100px;border:8px solid;"></canvas>
+<img id="canvasimg" style="position:absolute;top:10%;left:52%; width=280;height=280px;display:none;">
+<input type="button" value="Классифицировать" id="sb" size="48" style="position:absolute;top:400px;left:100px;">
+<input type="button" value="Очистить" id="cb" size="23" style="position:absolute;top:400px;left:280px;">
+<script src="data.js" type="module"></script>
+<script src="script.js" type="module"></script>
 </body>
 </html>

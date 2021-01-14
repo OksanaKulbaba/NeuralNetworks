@@ -1,170 +1,121 @@
-console.log('Hello TensorFlow');
+import {MnistData} from './data.js';
+var canvas, ctx, saveButton, clearButton;
+var pos = {x:0, y:0};
+var rawImage;
+var model;
 
+function getModel() {
+    model = tf.sequential();
 
-async function getData() {
-    const carsDataResponse = await fetch('https://storage.googleapis.com/tfjs-tutorials/carsData.json');
-    const carsData = await carsDataResponse.json();
-    const cleaned = carsData.map(car => ({
-        mpg: car.Miles_per_Gallon,
-        horsepower: car.Horsepower,
-    }))
-        .filter(car => (car.mpg != null && car.horsepower != null));
+    model.add(tf.layers.conv2d({inputShape: [28, 28, 1], kernelSize: 3, filters: 8, activation: 'relu'}));
+    model.add(tf.layers.maxPooling2d({poolSize: [2, 2]}));
+    model.add(tf.layers.conv2d({kernelSize: 3, filters: 16, activation: 'relu'}));
+    model.add(tf.layers.maxPooling2d({poolSize: [2, 2]}));
+    model.add(tf.layers.flatten());
+    model.add(tf.layers.dense({units: 128, activation: 'relu'}));
+    model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
 
-    return cleaned;
-}
-async function run() {
-    // Load and plot the original input data that we are going to train on.
-    const data = await getData();
-    const values = data.map(d => ({
-        x: d.horsepower,
-        y: d.mpg,
-    }));
-
-    tfvis.render.scatterplot(
-        {name: 'Horsepower v MPG'},
-        {values},
-        {
-            xLabel: 'Horsepower',
-            yLabel: 'MPG',
-            height: 300
-        }
-    );
-
-    const model = createModel();
-    tfvis.show.modelSummary({name: 'Model Summary'}, model);
-
-    // Convert the data to a form we can use for training.
-    const tensorData = convertToTensor(data);
-    const {inputs, labels} = tensorData;
-
-// Train the model
-    await trainModel(model, inputs, labels);
-    console.log('Done Training');
-
-    // Make some predictions using the model and compare them to the
-    // original data
-    testModel(model, data, tensorData);
-
-    // More code will be added below
-}
-
-document.addEventListener('DOMContentLoaded', run);
-
-
-function createModel() {
-    // Create a sequential model
-    const model = tf.sequential();
-
-    // Add a single input layer
-    model.add(tf.layers.dense({inputShape: [1], units: 1, useBias: true}));
-
-    // Add an output layer
-    model.add(tf.layers.dense({units: 1, useBias: true}));
+    model.compile({optimizer: tf.train.adam(), loss: 'categoricalCrossentropy', metrics: ['accuracy']});
 
     return model;
 }
 
+async function train(model, data) {
 
+    const metrics = ['loss', 'val_loss', 'accuracy', 'val_accuracy'];
+    const container = { name: 'Обучение модели', styles: { height: '640px' } };
+    const fitCallbacks = tfvis.show.fitCallbacks(container, metrics);
 
-function convertToTensor(data) {
-    // Wrapping these calculations in a tidy will dispose any
-    // intermediate tensors.
+    const BATCH_SIZE = 512;
+    const TRAIN_DATA_SIZE = 5500;
+    const TEST_DATA_SIZE = 1000;
 
-    return tf.tidy(() => {
-        // Step 1. Shuffle the data
-        tf.util.shuffle(data);
-
-        // Step 2. Convert data to Tensor
-        const inputs = data.map(d => d.horsepower)
-        const labels = data.map(d => d.mpg);
-
-        const inputTensor = tf.tensor2d(inputs, [inputs.length, 1]);
-        const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
-
-        //Step 3. Normalize the data to the range 0 - 1 using min-max scaling
-        const inputMax = inputTensor.max();
-        const inputMin = inputTensor.min();
-        const labelMax = labelTensor.max();
-        const labelMin = labelTensor.min();
-
-        const normalizedInputs = inputTensor.sub(inputMin).div(inputMax.sub(inputMin));
-        const normalizedLabels = labelTensor.sub(labelMin).div(labelMax.sub(labelMin));
-
-        return {
-            inputs: normalizedInputs,
-            labels: normalizedLabels,
-            // Return the min/max bounds so we can use them later.
-            inputMax,
-            inputMin,
-            labelMax,
-            labelMin,
-        }
-    });
-}
-async function trainModel(model, inputs, labels) {
-    // Prepare the model for training.
-    model.compile({
-        optimizer: tf.train.adam(),
-        loss: tf.losses.meanSquaredError,
-        metrics: ['mse'],
+    const [trainXs, trainYs] = tf.tidy(() => {
+        const d = data.nextTrainBatch(TRAIN_DATA_SIZE);
+        return [
+            d.xs.reshape([TRAIN_DATA_SIZE, 28, 28, 1]),
+            d.labels
+        ];
     });
 
-    const batchSize = 32;
-    const epochs = 50;
+    const [testXs, testYs] = tf.tidy(() => {
+        const d = data.nextTestBatch(TEST_DATA_SIZE);
+        return [
+            d.xs.reshape([TEST_DATA_SIZE, 28, 28, 1]),
+            d.labels
+        ];
+    });
 
-    return await model.fit(inputs, labels, {
-        batchSize,
-        epochs,
+    return model.fit(trainXs, trainYs, {
+        batchSize: BATCH_SIZE,
+        validationData: [testXs, testYs],
+        epochs: 20,
         shuffle: true,
-        callbacks: tfvis.show.fitCallbacks(
-            { name: 'Training Performance' },
-            ['loss', 'mse'],
-            { height: 200, callbacks: ['onEpochEnd'] }
-        )
+        callbacks: fitCallbacks
     });
 }
 
-function testModel(model, inputData, normalizationData) {
-    const {inputMax, inputMin, labelMin, labelMax} = normalizationData;
-
-    // Generate predictions for a uniform range of numbers between 0 and 1;
-    // We un-normalize the data by doing the inverse of the min-max scaling
-    // that we did earlier.
-    const [xs, preds] = tf.tidy(() => {
-
-        const xs = tf.linspace(0, 1, 100);
-        const preds = model.predict(xs.reshape([100, 1]));
-
-        const unNormXs = xs
-            .mul(inputMax.sub(inputMin))
-            .add(inputMin);
-
-        const unNormPreds = preds
-            .mul(labelMax.sub(labelMin))
-            .add(labelMin);
-
-        // Un-normalize the data
-        return [unNormXs.dataSync(), unNormPreds.dataSync()];
-    });
-
-
-    const predictedPoints = Array.from(xs).map((val, i) => {
-        return {x: val, y: preds[i]}
-    });
-
-    const originalPoints = inputData.map(d => ({
-        x: d.horsepower, y: d.mpg,
-    }));
-
-
-    tfvis.render.scatterplot(
-        {name: 'Model Predictions vs Original Data'},
-        {values: [originalPoints, predictedPoints], series: ['original', 'predicted']},
-        {
-            xLabel: 'Horsepower',
-            yLabel: 'MPG',
-            height: 300
-        }
-    );
+function setPosition(e){
+    pos.x = e.clientX-100;
+    pos.y = e.clientY-100;
 }
 
+function draw(e) {
+
+    if(e.buttons!==1) return;
+    ctx.beginPath();
+    ctx.lineWidth = 22;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'yellow';
+    ctx.moveTo(pos.x, pos.y);
+    setPosition(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    rawImage.src = canvas.toDataURL('image/png');
+}
+
+function erase() {
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,280,280);
+}
+
+function save() {
+    var raw = tf.browser.fromPixels(rawImage,1);
+    var resized = tf.image.resizeBilinear(raw, [28,28]);
+    var tensor = resized.expandDims(0);
+    var prediction = model.predict(tensor);
+    var pIndex = tf.argMax(prediction, 1).dataSync();
+
+    alert(pIndex);
+}
+
+function init() {
+    canvas = document.getElementById('canvas');
+    rawImage = document.getElementById('canvasimg');
+    ctx = canvas.getContext("2d");
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,280,280);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mousedown", setPosition);
+    canvas.addEventListener("mouseenter", setPosition);
+    saveButton = document.getElementById('sb');
+    saveButton.addEventListener("click", save);
+    clearButton = document.getElementById('cb');
+    clearButton.addEventListener("click", erase);
+}
+
+
+async function run() {
+    const data = new MnistData();
+    await data.load();
+    console.log("date load")
+    const model = getModel();
+    console.log("get model");
+    tfvis.show.modelSummary({name: 'Архитектура модели'}, model);
+    console.log("train before")
+    await train(model, data);
+    console.log("train after")
+    init();
+    alert("Обучение закончено, попробуйте классификатор на рукописных цифрах!");
+}
+document.addEventListener('DOMContentLoaded', run);
